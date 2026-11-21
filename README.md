@@ -39,6 +39,17 @@ approval/request ──► 等待 graceMs ──► 还在等？
 - 窗口已经是前台（你正看着审批面板）→ 脚本直接退出，不响也不闪。
 - 请求解决 → 再调一次脚本撤掉闪烁（`FLASHW_STOP`）。
 
+### 为什么监听要 prepend
+
+`approval/request` 与 `user-questions/request` 是 Cordis 的 **waterfall** 事件：
+内置 answerer 会直接返回审批结果、**不调用 `next()`**，所以排在它后面的监听器永远轮不到。
+插件用 `ctx.on(name, handler, { global: true, prepend: true })` 注册：
+
+- `global: true` 绕过 agent scope 过滤（事件按 `scopeTarget(agent, ...)` 派发）；
+- `prepend: true` 保证先于内置 answerer 执行，执行完再 `next()` 把决定原样交还给它。
+
+这两点是「插件到底会不会响」的关键，改动监听注册时不要去掉。
+
 插件自己 `spawn` `powershell.exe`，不依赖 Electron API：DSH 的 Host 是
 `ELECTRON_RUN_AS_NODE` 子进程，拿不到 `BrowserWindow.flashFrame`，只能走 Win32。
 
@@ -68,9 +79,18 @@ dsh plugin --profile desktop add dsh-approval-alert
 | `flash` | `true` | 是否闪烁任务栏 |
 | `processName` | `'DeepSeek Harness'` | 要闪的进程名；桌面版默认即可 |
 | `soundFile` | 空（用自带音效） | 自定义提示音 WAV 的绝对路径；留空 = 插件自带的柔和三连音「叮-叮-叮」 |
+| `quietWhenFocused` | `false` | `true` = DSH 窗口在前台时保持安静；默认 `false`，前台也提醒 |
 
 默认音效是插件自带的 `assets/sounds/chime.wav`（三连上行），刻意避开 Windows 的报错系提示音。
 想换成自己的音效，把 WAV 路径填进 `soundFile` 即可，任何 16-bit PCM WAV 都能播。
+
+### 为什么 DSH 在前台也要提醒
+
+DSH 一个窗口里可以同时开着多个会话。你在会话 A 时，会话 B 的审批面板虽然存在，
+但你**看不见**它。所以判断「前台窗口是不是 DSH」并不能判断「用户是不是看到了这个审批」，
+默认就一律提醒。想要「我在窗口前就别吵我」的旧行为，把 `quietWhenFocused` 设成 `true`。
+
+每次提醒的结论会追加到 `%LOCALAPPDATA%\dsh-approval-alert\alert.log`，排查「为什么没听到」时先看它。
 
 示例：
 
@@ -106,5 +126,7 @@ node test/scheduler.test.mjs     # 调度逻辑单测（9 个）
 
 ## 已知限制
 
-- 只认桌面版进程名；用浏览器打开 Web GUI 时，浏览器标签不在闪烁范围内（仍会响提示音）。
-- 窗口关闭到托盘时无法闪烁（没有任务栏按钮）。
+- 窗口**完全关闭到托盘**时没有任务栏按钮可闪烁，此时仍会播放提示音；
+- 用浏览器打开 Web GUI 时，浏览器标签不在闪烁范围内，但提示音照常响。
+- 「用户是不是真的看到了这个审批」无法从 Win32 判断，只能整体选择提醒或不提醒
+  （`quietWhenFocused`）。

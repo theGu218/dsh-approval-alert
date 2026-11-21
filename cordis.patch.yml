@@ -12,3 +12,6 @@
         processName: 'DeepSeek Harness'
         # 想换提示音时填任意本地 WAV 的绝对路径；留空 = 插件自带的三连上行「叮-叮-叮」
         # soundFile: 'D:\sounds\my-alert.wav'
+        # 默认 false：DSH 在前台也提醒（一个窗口有多个会话，B 会话的授权 A 会话看不见）。
+        # 改成 true 则「DSH 在前台时保持安静」。
+        quietWhenFocused: false

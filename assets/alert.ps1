@@ -2,10 +2,12 @@ param(
   [ValidateSet('alert', 'stop')]
   [string]$Mode = 'alert',
   [string]$ProcessName = 'DeepSeek Harness',
+  [string]$ProcessPath = '',
   [string]$SoundFile = '',
   [int]$SoundCount = 1,
   [switch]$NoSound,
-  [switch]$NoFlash
+  [switch]$NoFlash,
+  [switch]$QuietWhenFocused
 )
 
 # DSH approval alert - native Windows attention helper.
@@ -13,14 +15,19 @@ param(
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File alert.ps1 -Mode alert
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File alert.ps1 -Mode stop
 #
-# Behavior (Mode = alert):
-#   * collects top-level taskbar windows that belong to $ProcessName processes
-#   * if the user is already looking at one of them (it is the foreground window),
-#     does nothing at all
-#   * otherwise flashes their taskbar buttons until the window is activated
-#     (FLASHW_ALL | FLASHW_TIMERNOFG) and plays the system notification sound
-# Behavior (Mode = stop):
-#   * stops any flashing previously requested by this helper
+# Alert mode:
+#   * collects top-level taskbar windows of the target DSH processes
+#     (matched by executable path first, then by process name)
+#   * flashes their taskbar buttons until activated (FLASHW_ALL | FLASHW_TIMERNOFG)
+#   * plays the notification sound
+#   * IMPORTANT: it always reminds, even when a DSH window is in the foreground,
+#     because one DSH window can show several conversations - an approval waiting
+#     in another conversation is invisible even though DSH itself is focused.
+#     -QuietWhenFocused restores the old "stay silent while DSH is focused" behavior.
+#   * when no target window can be found it still plays the sound, so a request is
+#     never silently missed.
+# Stop mode:
+#   * stops any flashing previously requested by this helper.
 
 $ErrorActionPreference = 'Stop'
 
@@ -129,22 +136,36 @@ public sealed class DshApprovalAlertWin32
 # ---------------------------------------------------------------- target processes
 
 $processIds = @()
-try
+if ($ProcessPath -ne '')
 {
-    $processIds = @(Get-Process -Name $ProcessName -ErrorAction Stop | ForEach-Object { [uint32]$_.Id })
+    try
+    {
+        $processIds = @(Get-Process -ErrorAction SilentlyContinue |
+            Where-Object { $null -ne $_.Path -and $_.Path -ieq $ProcessPath } |
+            ForEach-Object { [uint32]$_.Id })
+    }
+    catch
+    {
+        $processIds = @()
+    }
 }
-catch
-{
-    $processIds = @()
-}
-
 if ($processIds.Count -eq 0)
 {
-    Write-Output 'no-process'
-    exit 0
+    try
+    {
+        $processIds = @(Get-Process -Name $ProcessName -ErrorAction Stop | ForEach-Object { [uint32]$_.Id })
+    }
+    catch
+    {
+        $processIds = @()
+    }
 }
 
-$windows = [DshApprovalAlertWin32]::TaskbarWindows($processIds)
+$windows = @()
+if ($processIds.Count -gt 0)
+{
+    $windows = [DshApprovalAlertWin32]::TaskbarWindows($processIds)
+}
 
 # ---------------------------------------------------------------- stop mode
 
@@ -161,41 +182,44 @@ if ($Mode -eq 'stop')
 
 # ---------------------------------------------------------------- alert mode
 
-if ($windows.Count -eq 0)
+if ($processIds.Count -eq 0)
 {
-    # Window gone (closed to tray) - there is no taskbar button to flash,
-    # keep the sound so the user still gets a signal.
+    # DSH is not running as a named desktop process (for example a plain
+    # `dsh web` session). There is no window to flash, but the sound still
+    # has to fire - otherwise an approval could be missed entirely.
+    Write-Output 'no-process'
+}
+elseif ($windows.Count -eq 0)
+{
+    # Window closed to tray: no taskbar button to flash, keep the sound.
     Write-Output 'no-window'
+}
+elseif ($QuietWhenFocused -and $processIds -contains ([DshApprovalAlertWin32]::ForegroundProcessId()))
+{
+    Write-Output 'foreground'
+    exit 0
+}
+elseif ($NoFlash)
+{
+    Write-Output 'flash-disabled'
 }
 else
 {
-    $foregroundPid = [DshApprovalAlertWin32]::ForegroundProcessId()
-    if ($foregroundPid -ne 0 -and ($processIds -contains $foregroundPid))
+    foreach ($hwnd in $windows)
     {
-        # The user is already looking at DSH; the approval panel is on screen.
-        Write-Output 'foreground'
-        exit 0
+        [void][DshApprovalAlertWin32]::Flash($hwnd, ($FLASHW_ALL -bor $FLASHW_TIMERNOFG))
     }
-
-    if (-not $NoFlash)
-    {
-        foreach ($hwnd in $windows)
-        {
-            [void][DshApprovalAlertWin32]::Flash($hwnd, ($FLASHW_ALL -bor $FLASHW_TIMERNOFG))
-        }
-        Write-Output 'flashing'
-    }
-    else
-    {
-        Write-Output 'flash-disabled'
-    }
+    Write-Output ('flashing:' + $windows.Count)
 }
 
+# ---------------------------------------------------------------- sound (always last)
+
+$soundState = 'sound:off'
 if (-not $NoSound -and $SoundCount -gt 0)
 {
+    $soundState = 'sound:ok'
     if ($SoundFile -ne '' -and (Test-Path -LiteralPath $SoundFile))
     {
-        # Prefer the bundled/friendly chime over the Windows error-style system sounds.
         for ($i = 0; $i -lt $SoundCount; $i++)
         {
             try
@@ -206,13 +230,15 @@ if (-not $NoSound -and $SoundCount -gt 0)
             }
             catch
             {
-                try { [System.Media.SystemSounds]::Asterisk.Play() } catch { }
+                $soundState = 'sound:fallback'
+                try { [System.Media.SystemSounds]::Asterisk.Play() } catch { $soundState = 'sound:fail' }
             }
             if ($i -lt ($SoundCount - 1)) { Start-Sleep -Milliseconds 200 }
         }
     }
     else
     {
+        $soundState = 'sound:fallback'
         for ($i = 0; $i -lt $SoundCount; $i++)
         {
             try
@@ -221,9 +247,10 @@ if (-not $NoSound -and $SoundCount -gt 0)
             }
             catch
             {
-                # sound device missing - nothing else to do
+                $soundState = 'sound:fail'
             }
             if ($i -lt ($SoundCount - 1)) { Start-Sleep -Milliseconds 260 }
         }
     }
 }
+Write-Output $soundState
