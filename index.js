@@ -38,7 +38,6 @@ const DEFAULTS = {
   flash: true,
   processName: 'DeepSeek Harness',
   soundFile: '',
-  quietWhenFocused: false,
 }
 
 function clampNumber(value, fallback, min, max) {
@@ -59,7 +58,6 @@ function readConfig(raw) {
         ? cfg.processName.trim()
         : DEFAULTS.processName,
     soundFile: typeof cfg.soundFile === 'string' ? cfg.soundFile.trim() : DEFAULTS.soundFile,
-    quietWhenFocused: cfg.quietWhenFocused === true,
   }
 }
 
@@ -96,7 +94,6 @@ export function apply(ctx, rawConfig) {
     sound: config.sound,
     flash: config.flash,
     soundFile: config.soundFile !== '' ? config.soundFile : DEFAULT_SOUND,
-    quietWhenFocused: config.quietWhenFocused,
     logFile: LOG_FILE,
   })
 
@@ -238,9 +235,7 @@ export function apply(ctx, rawConfig) {
               const status = lines.find((line) => line.startsWith('flashing') || line.startsWith('stopped')) ?? lines[0] ?? ''
               const sound = lines.find((line) => line.startsWith('sound:')) ?? ''
               let verdict
-              if (status === 'foreground') {
-                verdict = 'DSH 窗口在前台，且 quietWhenFocused 打开，按配置保持安静。'
-              } else if (status === 'no-window') {
+              if (status === 'no-window') {
                 verdict = `已播放提示音（${sound || 'sound:ok'}）；没有找到可闪烁的 DSH 任务栏窗口（窗口可能关闭到托盘了）。`
               } else if (status === 'no-process') {
                 verdict = `没有找到 DSH 桌面进程（可能用浏览器或 node 方式运行），已播放提示音（${sound || 'sound:ok'}）。`

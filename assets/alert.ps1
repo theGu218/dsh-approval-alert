@@ -6,8 +6,7 @@ param(
   [string]$SoundFile = '',
   [int]$SoundCount = 1,
   [switch]$NoSound,
-  [switch]$NoFlash,
-  [switch]$QuietWhenFocused
+  [switch]$NoFlash
 )
 
 # DSH approval alert - native Windows attention helper.
@@ -20,10 +19,9 @@ param(
 #     (matched by executable path first, then by process name)
 #   * flashes their taskbar buttons until activated (FLASHW_ALL | FLASHW_TIMERNOFG)
 #   * plays the notification sound
-#   * IMPORTANT: it always reminds, even when a DSH window is in the foreground,
-#     because one DSH window can show several conversations - an approval waiting
-#     in another conversation is invisible even though DSH itself is focused.
-#     -QuietWhenFocused restores the old "stay silent while DSH is focused" behavior.
+#   * ALWAYS reminds: no foreground/minimized check, no exceptions. A DSH window
+#     can show several conversations, so "focused" never means "the user sees this
+#     specific approval".
 #   * when no target window can be found it still plays the sound, so a request is
 #     never silently missed.
 # Stop mode:
@@ -58,9 +56,6 @@ public sealed class DshApprovalAlertWin32
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassNameW(IntPtr hwnd, StringBuilder text, int maxCount);
-
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     public static extern int GetWindowLongW(IntPtr hwnd, int index);
@@ -116,15 +111,6 @@ public sealed class DshApprovalAlertWin32
             return true;
         }, IntPtr.Zero);
         return found;
-    }
-
-    public static uint ForegroundProcessId()
-    {
-        IntPtr hwnd = GetForegroundWindow();
-        if (hwnd == IntPtr.Zero) return 0;
-        uint pid;
-        GetWindowThreadProcessId(hwnd, out pid);
-        return pid;
     }
 }
 "@
@@ -193,11 +179,6 @@ elseif ($windows.Count -eq 0)
 {
     # Window closed to tray: no taskbar button to flash, keep the sound.
     Write-Output 'no-window'
-}
-elseif ($QuietWhenFocused -and $processIds -contains ([DshApprovalAlertWin32]::ForegroundProcessId()))
-{
-    Write-Output 'foreground'
-    exit 0
 }
 elseif ($NoFlash)
 {

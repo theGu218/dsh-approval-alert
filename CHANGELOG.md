@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- **无条件提醒**：去掉前台判断与 `quietWhenFocused` 配置。只要有审批/提问在等，
+  不管窗口是否最小化、是否在前台、在哪个会话，一律响铃 + 闪烁。
+- 精简 `alert.ps1`：移除 `-QuietWhenFocused` 参数与 `GetForegroundWindow` 依赖。
+
 ## 0.1.3
 
 - **修复提醒完全不触发**：`approval/request` 与 `user-questions/request` 是 Cordis waterfall 事件，
