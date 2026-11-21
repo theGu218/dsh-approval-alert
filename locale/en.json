@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Approval alerts",
+    "description": "Plays a sound and flashes the taskbar when a tool call or question is waiting for your approval, so you never miss one after closing the window."
+  }
+}
