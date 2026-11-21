@@ -2,7 +2,8 @@ param(
   [ValidateSet('alert', 'stop')]
   [string]$Mode = 'alert',
   [string]$ProcessName = 'DeepSeek Harness',
-  [int]$SoundCount = 2,
+  [string]$SoundFile = '',
+  [int]$SoundCount = 1,
   [switch]$NoSound,
   [switch]$NoFlash
 )
@@ -192,16 +193,37 @@ else
 
 if (-not $NoSound -and $SoundCount -gt 0)
 {
-    for ($i = 0; $i -lt $SoundCount; $i++)
+    if ($SoundFile -ne '' -and (Test-Path -LiteralPath $SoundFile))
     {
-        try
+        # Prefer the bundled/friendly chime over the Windows error-style system sounds.
+        for ($i = 0; $i -lt $SoundCount; $i++)
         {
-            [System.Media.SystemSounds]::Exclamation.Play()
+            try
+            {
+                $player = New-Object System.Media.SoundPlayer
+                $player.SoundLocation = $SoundFile
+                $player.PlaySync()
+            }
+            catch
+            {
+                try { [System.Media.SystemSounds]::Asterisk.Play() } catch { }
+            }
+            if ($i -lt ($SoundCount - 1)) { Start-Sleep -Milliseconds 200 }
         }
-        catch
+    }
+    else
+    {
+        for ($i = 0; $i -lt $SoundCount; $i++)
         {
-            # sound device missing - nothing else to do
+            try
+            {
+                [System.Media.SystemSounds]::Asterisk.Play()
+            }
+            catch
+            {
+                # sound device missing - nothing else to do
+            }
+            if ($i -lt ($SoundCount - 1)) { Start-Sleep -Milliseconds 260 }
         }
-        if ($i -lt ($SoundCount - 1)) { Start-Sleep -Milliseconds 260 }
     }
 }

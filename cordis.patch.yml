@@ -10,3 +10,5 @@
         sound: true
         flash: true
         processName: 'DeepSeek Harness'
+        # 想换提示音时填任意本地 WAV 的绝对路径；留空 = 插件自带的三连上行「叮-叮-叮」
+        # soundFile: 'D:\sounds\my-alert.wav'

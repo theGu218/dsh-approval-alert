@@ -16,10 +16,14 @@
  * 提醒由插件自己 spawn 的 powershell.exe 完成（见 lib/win32.js）。
  */
 
+import { fileURLToPath } from 'node:url'
 import { createScheduler } from './lib/scheduler.js'
 import { createWin32Backend } from './lib/win32.js'
 
 export const name = 'dsh-approval-alert'
+
+/** 出厂的提示音：柔和的三连上行（不是 Windows 的报错音）。 */
+const DEFAULT_SOUND = fileURLToPath(new URL('./assets/sounds/chime.wav', import.meta.url))
 
 const DEFAULTS = {
   graceMs: 4000,
@@ -27,6 +31,7 @@ const DEFAULTS = {
   sound: true,
   flash: true,
   processName: 'DeepSeek Harness',
+  soundFile: '',
 }
 
 function clampNumber(value, fallback, min, max) {
@@ -46,6 +51,7 @@ function readConfig(raw) {
       typeof cfg.processName === 'string' && cfg.processName.trim() !== ''
         ? cfg.processName.trim()
         : DEFAULTS.processName,
+    soundFile: typeof cfg.soundFile === 'string' ? cfg.soundFile.trim() : DEFAULTS.soundFile,
   }
 }
 
@@ -71,7 +77,12 @@ export function apply(ctx, rawConfig) {
     return
   }
 
-  const backend = createWin32Backend(config)
+  const backend = createWin32Backend({
+    processName: config.processName,
+    sound: config.sound,
+    flash: config.flash,
+    soundFile: config.soundFile !== '' ? config.soundFile : DEFAULT_SOUND,
+  })
 
   const scheduler = createScheduler({
     graceMs: config.graceMs,

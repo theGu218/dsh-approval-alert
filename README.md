@@ -67,6 +67,10 @@ dsh plugin --profile desktop add dsh-approval-alert
 | `sound` | `true` | 是否播放提示音 |
 | `flash` | `true` | 是否闪烁任务栏 |
 | `processName` | `'DeepSeek Harness'` | 要闪的进程名；桌面版默认即可 |
+| `soundFile` | 空（用自带音效） | 自定义提示音 WAV 的绝对路径；留空 = 插件自带的柔和三连音「叮-叮-叮」 |
+
+默认音效是插件自带的 `assets/sounds/chime.wav`（三连上行），刻意避开 Windows 的报错系提示音。
+想换成自己的音效，把 WAV 路径填进 `soundFile` 即可，任何 16-bit PCM WAV 都能播。
 
 示例：
 
@@ -79,6 +83,7 @@ dsh plugin --profile desktop add dsh-approval-alert
         repeatMs: 60000
         sound: true
         flash: true
+        soundFile: 'D:\sounds\my-alert.wav'
 ```
 
 ## 平台
